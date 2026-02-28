@@ -1,4 +1,4 @@
-export type ExerciseType = 'hold_seconds' | 'reps';
+export type ExerciseType = 'hold_seconds' | 'reps' | 'hold_seconds_each_side' | 'reps_each_side';
 
 export interface ExerciseDefinition {
   type: ExerciseType;
@@ -13,6 +13,10 @@ export interface PrescriptionItem {
   sets: number;
   reps?: number;
   hold_seconds?: number;
+  reps_each_side?: number;
+  hold_seconds_each_side?: number;
+  weight_kg?: number;
+  distance_m?: number;
 }
 
 export interface WeekPrescription {
@@ -49,7 +53,9 @@ export interface WorkoutLog {
     name: string;
     sets: {
       completed: boolean;
-      value: number; // reps or seconds
+      value: number; // primary value (reps or seconds)
+      weight_kg?: number;
+      distance_m?: number;
       timestamp: string;
     }[];
   }[];

@@ -22,17 +22,21 @@ export function calculatePrescriptionForWeek(
           
           // Check for specific deltas like "plank_hold_seconds" or "push_up_reps"
           for (const deltaKey in deltas) {
-            const [exerciseName, field] = deltaKey.split('_');
-            // This is a bit tricky because the key might be "plank_hold_seconds" 
-            // but the field is "hold_seconds".
-            // Let's try to match exercise name and then the field.
+            const lastUnderscoreIndex = deltaKey.lastIndexOf('_');
+            const exerciseName = deltaKey.substring(0, lastUnderscoreIndex);
             
             if (newItem.name === exerciseName) {
               const deltaValue = parseInt(deltas[deltaKey]);
-              if (deltaKey.endsWith('_reps') && newItem.reps !== undefined) {
-                newItem.reps += deltaValue;
-              } else if (deltaKey.endsWith('_hold_seconds') && newItem.hold_seconds !== undefined) {
-                newItem.hold_seconds += deltaValue;
+              if (deltaKey.endsWith('_reps')) {
+                newItem.reps = (newItem.reps || 0) + deltaValue;
+              } else if (deltaKey.endsWith('_hold_seconds')) {
+                newItem.hold_seconds = (newItem.hold_seconds || 0) + deltaValue;
+              } else if (deltaKey.endsWith('_reps_each_side')) {
+                newItem.reps_each_side = (newItem.reps_each_side || 0) + deltaValue;
+              } else if (deltaKey.endsWith('_hold_seconds_each_side')) {
+                newItem.hold_seconds_each_side = (newItem.hold_seconds_each_side || 0) + deltaValue;
+              } else if (deltaKey.endsWith('_sets')) {
+                newItem.sets = (newItem.sets || 0) + deltaValue;
               }
             }
           }
@@ -43,6 +47,14 @@ export function calculatePrescriptionForWeek(
   }
 
   return currentPrescription;
+}
+
+export function formatExerciseTarget(ex: PrescriptionItem): string {
+  if (ex.reps !== undefined) return `${ex.reps}`;
+  if (ex.reps_each_side !== undefined) return `${ex.reps_each_side} (each)`;
+  if (ex.hold_seconds !== undefined) return `${ex.hold_seconds}s`;
+  if (ex.hold_seconds_each_side !== undefined) return `${ex.hold_seconds_each_side}s (each)`;
+  return '0';
 }
 
 export function formatSeconds(seconds: number): string {

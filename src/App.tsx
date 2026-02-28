@@ -45,7 +45,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { TrainingProgram, WorkoutLog, PrescriptionItem } from './types';
 import { getActiveProgram, saveProgram, getWorkoutLogs, saveWorkoutLog, clearAllData } from './services/db';
-import { calculatePrescriptionForWeek, formatSeconds, playSound } from './utils';
+import { calculatePrescriptionForWeek, formatSeconds, playSound, formatExerciseTarget } from './utils';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -119,6 +119,7 @@ export default function App() {
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [selectedExercise, setSelectedExercise] = useState<string>('');
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('dark_mode');
     return saved === 'true';
@@ -456,7 +457,7 @@ export default function App() {
                                 <div key={i} className="flex items-center justify-between text-sm text-zinc-600 dark:text-zinc-400">
                                   <span>{ex.name}</span>
                                   <span className="font-mono font-medium">
-                                    {ex.sets} × {ex.reps || `${ex.hold_seconds}s`}
+                                    {ex.sets} × {formatExerciseTarget(ex)}
                                   </span>
                                 </div>
                               ))}
@@ -540,6 +541,58 @@ export default function App() {
               <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="p-6">
+                  <h3 className="font-bold mb-6 text-zinc-500 text-xs uppercase tracking-widest">Exercise Progress</h3>
+                  <div className="space-y-4">
+                    <select 
+                      value={selectedExercise}
+                      onChange={(e) => setSelectedExercise(e.target.value)}
+                      className="w-full p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-sm outline-none"
+                    >
+                      <option value="">Select an exercise</option>
+                      {Array.from(new Set(logs.flatMap(l => l.exercises.map(e => e.name)))).map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                    
+                    <div className="h-64 w-full">
+                      {selectedExercise ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={logs.filter(l => l.exercises.some(e => e.name === selectedExercise)).map(l => {
+                            const ex = l.exercises.find(e => e.name === selectedExercise);
+                            const avgValue = ex ? ex.sets.reduce((acc, s) => acc + s.value, 0) / ex.sets.length : 0;
+                            const maxWeight = ex ? Math.max(...ex.sets.map(s => s.weight_kg || 0)) : 0;
+                            return {
+                              date: new Date(l.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                              value: Number(avgValue.toFixed(1)),
+                              weight: maxWeight
+                            };
+                          })}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} />
+                            <Tooltip 
+                              contentStyle={{ 
+                                borderRadius: '12px', 
+                                border: 'none', 
+                                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                backgroundColor: darkMode ? '#18181b' : '#ffffff',
+                                color: darkMode ? '#ffffff' : '#000000'
+                              }}
+                            />
+                            <Line type="monotone" dataKey="value" name="Avg Reps/Sec" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981' }} />
+                            <Line type="monotone" dataKey="weight" name="Max Weight" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-zinc-400 text-sm">
+                          Select an exercise to see progress
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+
                 <Card className="p-6">
                   <h3 className="font-bold mb-6 text-zinc-500 text-xs uppercase tracking-widest">Workout Duration (Last 7)</h3>
                   <div className="h-64 w-full">
@@ -922,6 +975,9 @@ function WorkoutSession({
   const [restTimeLeft, setRestTimeLeft] = useState(0);
   const [sessionTime, setSessionTime] = useState(0);
   const [exerciseTime, setExerciseTime] = useState(0);
+  const [actualValue, setActualValue] = useState<number>(0);
+  const [actualWeight, setActualWeight] = useState<number>(0);
+  const [actualDistance, setActualDistance] = useState<number>(0);
   const [workoutLog, setWorkoutLog] = useState<WorkoutLog>({
     programId: program.id!,
     date: new Date().toISOString(),
@@ -944,6 +1000,13 @@ function WorkoutSession({
   useEffect(() => {
     if (localStorage.getItem('sound_enabled') !== 'false') playSound('START');
   }, []);
+
+  useEffect(() => {
+    // Reset actual values when set or exercise changes
+    setActualValue(currentExercise.reps || currentExercise.hold_seconds || currentExercise.reps_each_side || currentExercise.hold_seconds_each_side || 0);
+    setActualWeight(currentExercise.weight_kg || 0);
+    setActualDistance(currentExercise.distance_m || 0);
+  }, [currentExerciseIndex, currentSetIndex]);
 
   useEffect(() => {
     if (isPaused) return;
@@ -997,7 +1060,9 @@ function WorkoutSession({
     const newLog = { ...workoutLog };
     newLog.exercises[currentExerciseIndex].sets[currentSetIndex] = {
       completed: true,
-      value: currentExercise.reps || currentExercise.hold_seconds || 0,
+      value: actualValue,
+      weight_kg: actualWeight > 0 ? actualWeight : undefined,
+      distance_m: actualDistance > 0 ? actualDistance : undefined,
       timestamp: new Date().toISOString()
     };
     setWorkoutLog(newLog);
@@ -1141,11 +1206,47 @@ function WorkoutSession({
                   </div>
                 )}
 
-                <div className="flex items-center justify-center gap-6">
+                <div className="flex flex-wrap items-center justify-center gap-8">
                   <div className="text-center">
                     <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Target</p>
-                    <p className="text-3xl font-bold mt-1">{currentExercise.reps || `${currentExercise.hold_seconds}s`}</p>
+                    <p className="text-3xl font-bold mt-1">
+                      {formatExerciseTarget(currentExercise)}
+                    </p>
                   </div>
+
+                  <div className="text-center">
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">
+                      Actual {(currentExercise.reps || currentExercise.reps_each_side) ? 'Reps' : 'Seconds'}
+                    </p>
+                    <input 
+                      type="number" 
+                      value={actualValue}
+                      onChange={(e) => setActualValue(Number(e.target.value))}
+                      className="text-3xl font-bold mt-1 bg-transparent border-b border-white/20 w-20 text-center focus:border-white outline-none"
+                    />
+                  </div>
+                  {(currentExercise.weight_kg !== undefined || actualWeight > 0) && (
+                    <div className="text-center">
+                      <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Weight (kg)</p>
+                      <input 
+                        type="number" 
+                        value={actualWeight}
+                        onChange={(e) => setActualWeight(Number(e.target.value))}
+                        className="text-3xl font-bold mt-1 bg-transparent border-b border-white/20 w-20 text-center focus:border-white outline-none"
+                      />
+                    </div>
+                  )}
+                  {(currentExercise.distance_m !== undefined || actualDistance > 0) && (
+                    <div className="text-center">
+                      <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Distance (m)</p>
+                      <input 
+                        type="number" 
+                        value={actualDistance}
+                        onChange={(e) => setActualDistance(Number(e.target.value))}
+                        className="text-3xl font-bold mt-1 bg-transparent border-b border-white/20 w-20 text-center focus:border-white outline-none"
+                      />
+                    </div>
+                  )}
                   {exerciseDef.time_limit_s && (
                     <div className="text-center">
                       <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Limit</p>
