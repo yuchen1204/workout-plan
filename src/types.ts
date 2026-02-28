@@ -4,6 +4,8 @@ export interface ExerciseDefinition {
   type: ExerciseType;
   rest_s: number;
   time_limit_s?: number;
+  description?: string;
+  gif_url?: string;
 }
 
 export interface PrescriptionItem {
