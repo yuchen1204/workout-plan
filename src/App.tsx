@@ -18,9 +18,25 @@ import {
   Clock,
   Flame,
   Target,
-  Trash2
+  Trash2,
+  BarChart3,
+  Settings as SettingsIcon,
+  Download,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  BarChart,
+  Bar
+} from 'recharts';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { TrainingProgram, WorkoutLog, PrescriptionItem } from './types';
@@ -80,11 +96,15 @@ const Button = ({
 // --- Main App ---
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'stats' | 'settings'>('dashboard');
   const [program, setProgram] = useState<TrainingProgram | null>(null);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    const saved = localStorage.getItem('sound_enabled');
+    return saved === null ? true : saved === 'true';
+  });
   const [activeWorkout, setActiveWorkout] = useState<{
     week: number;
     day: string;
@@ -94,6 +114,10 @@ export default function App() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('sound_enabled', soundEnabled.toString());
+  }, [soundEnabled]);
 
   const loadData = async () => {
     const p = await getActiveProgram();
@@ -137,6 +161,17 @@ export default function App() {
     }
   };
 
+  const handleExport = () => {
+    const data = { program, logs };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fittrack-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const startWorkout = (week: number, day: string, exercises: PrescriptionItem[]) => {
     setActiveWorkout({ week, day, exercises });
   };
@@ -165,6 +200,26 @@ export default function App() {
           >
             <HistoryIcon size={20} />
             <span className="text-[10px] font-semibold uppercase tracking-wider md:text-sm md:normal-case">History</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('stats')}
+            className={cn(
+              "flex flex-col items-center gap-1 md:flex-row md:gap-2 px-3 py-1 rounded-lg transition-colors",
+              activeTab === 'stats' ? "text-zinc-900" : "text-zinc-400 hover:text-zinc-600"
+            )}
+          >
+            <BarChart3 size={20} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider md:text-sm md:normal-case">Stats</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('settings')}
+            className={cn(
+              "flex flex-col items-center gap-1 md:flex-row md:gap-2 px-3 py-1 rounded-lg transition-colors",
+              activeTab === 'settings' ? "text-zinc-900" : "text-zinc-400 hover:text-zinc-600"
+            )}
+          >
+            <SettingsIcon size={20} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider md:text-sm md:normal-case">Settings</span>
           </button>
         </div>
       </nav>
@@ -257,6 +312,42 @@ export default function App() {
                         <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Time Limit</p>
                         <p className="text-2xl font-bold mt-1">{program.session_structure.main_minutes}m</p>
                       </div>
+                      <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100 col-span-2">
+                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Current Streak</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Flame size={20} className="text-orange-500 fill-orange-500" />
+                          <p className="text-2xl font-bold">
+                            {(() => {
+                              if (logs.length === 0) return 0;
+                              let streak = 0;
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              
+                              const sortedLogs = [...logs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                              let lastDate = new Date(sortedLogs[0].date);
+                              lastDate.setHours(0, 0, 0, 0);
+                              
+                              // If last workout was not today or yesterday, streak is 0 (or 1 if today)
+                              const diff = (today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24);
+                              if (diff > 1) return 0;
+                              
+                              streak = 1;
+                              for (let i = 1; i < sortedLogs.length; i++) {
+                                const currentDate = new Date(sortedLogs[i].date);
+                                currentDate.setHours(0, 0, 0, 0);
+                                const dayDiff = (lastDate.getTime() - currentDate.getTime()) / (1000 * 3600 * 24);
+                                if (dayDiff === 1) {
+                                  streak++;
+                                  lastDate = currentDate;
+                                } else if (dayDiff > 1) {
+                                  break;
+                                }
+                              }
+                              return streak;
+                            })()} Days
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </Card>
 
@@ -314,6 +405,158 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </motion.div>
+          ) : activeTab === 'stats' ? (
+            <motion.div 
+              key="stats"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-8"
+            >
+              <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="p-6">
+                  <h3 className="font-bold mb-6 text-zinc-500 text-xs uppercase tracking-widest">Workout Duration (Last 7)</h3>
+                  <div className="h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={logs.slice(-7).map(l => ({ 
+                        name: new Date(l.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
+                        minutes: Math.round(l.totalDurationSeconds / 60) 
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} />
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                          cursor={{ fill: '#f4f4f5' }}
+                        />
+                        <Bar dataKey="minutes" fill="#18181b" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <h3 className="font-bold mb-6 text-zinc-500 text-xs uppercase tracking-widest">Volume Trend</h3>
+                  <div className="h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={logs.slice(-10).map((l, i) => ({ 
+                        index: i + 1, 
+                        sets: l.exercises.reduce((acc, ex) => acc + ex.sets.filter(s => s.completed).length, 0) 
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                        <XAxis dataKey="index" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} />
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        />
+                        <Line type="monotone" dataKey="sets" stroke="#18181b" strokeWidth={2} dot={{ fill: '#18181b', strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="p-6 text-center">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Total Workouts</p>
+                  <p className="text-4xl font-black mt-2">{logs.length}</p>
+                </Card>
+                <Card className="p-6 text-center">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Total Minutes</p>
+                  <p className="text-4xl font-black mt-2">
+                    {Math.round(logs.reduce((acc, l) => acc + l.totalDurationSeconds, 0) / 60)}
+                  </p>
+                </Card>
+                <Card className="p-6 text-center">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Avg. Duration</p>
+                  <p className="text-4xl font-black mt-2">
+                    {logs.length ? Math.round(logs.reduce((acc, l) => acc + l.totalDurationSeconds, 0) / logs.length / 60) : 0}m
+                  </p>
+                </Card>
+              </div>
+            </motion.div>
+          ) : activeTab === 'settings' ? (
+            <motion.div 
+              key="settings"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-8"
+            >
+              <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+
+              <div className="space-y-4">
+                <h3 className="font-bold text-zinc-500 text-xs uppercase tracking-widest">Preferences</h3>
+                <Card className="divide-y divide-zinc-100">
+                  <div className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center text-zinc-600">
+                        {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+                      </div>
+                      <div>
+                        <p className="font-bold">Sound Effects</p>
+                        <p className="text-xs text-zinc-500">Play cues during workout</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setSoundEnabled(!soundEnabled)}
+                      className={cn(
+                        "w-12 h-6 rounded-full transition-colors relative",
+                        soundEnabled ? "bg-zinc-900" : "bg-zinc-200"
+                      )}
+                    >
+                      <div className={cn(
+                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                        soundEnabled ? "left-7" : "left-1"
+                      )} />
+                    </button>
+                  </div>
+                </Card>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-bold text-zinc-500 text-xs uppercase tracking-widest">Data Management</h3>
+                <Card className="divide-y divide-zinc-100">
+                  <button 
+                    onClick={handleExport}
+                    className="w-full p-4 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 text-left">
+                      <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center text-zinc-600">
+                        <Download size={20} />
+                      </div>
+                      <div>
+                        <p className="font-bold">Export Data</p>
+                        <p className="text-xs text-zinc-500">Download backup as JSON</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-zinc-300" />
+                  </button>
+
+                  <button 
+                    onClick={() => setIsConfirmingDelete(true)}
+                    className="w-full p-4 flex items-center justify-between hover:bg-red-50 transition-colors group"
+                  >
+                    <div className="flex items-center gap-3 text-left">
+                      <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-600 group-hover:bg-red-100">
+                        <Trash2 size={20} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-red-600">Reset All Data</p>
+                        <p className="text-xs text-red-400">Permanently delete programs and logs</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-red-200" />
+                  </button>
+                </Card>
+              </div>
+
+              <div className="pt-8 text-center">
+                <p className="text-xs text-zinc-400 font-medium">FitTrack Pro v1.1.0</p>
+              </div>
             </motion.div>
           ) : (
             <motion.div 
@@ -487,7 +730,7 @@ function WorkoutSession({
   const exerciseDef = program.exercise_library[currentExercise.name];
 
   useEffect(() => {
-    playSound('START');
+    if (localStorage.getItem('sound_enabled') !== 'false') playSound('START');
   }, []);
 
   useEffect(() => {
@@ -511,12 +754,14 @@ function WorkoutSession({
     restTimerRef.current = setInterval(() => {
       setRestTimeLeft(prev => {
         if (prev <= 4 && prev > 1) {
-          playSound('TICK');
+          if (localStorage.getItem('sound_enabled') !== 'false') playSound('TICK');
         }
         if (prev <= 1) {
           if (restTimerRef.current) clearInterval(restTimerRef.current);
-          playSound('BEEP');
-          setTimeout(() => playSound('START'), 500);
+          if (localStorage.getItem('sound_enabled') !== 'false') playSound('BEEP');
+          setTimeout(() => {
+            if (localStorage.getItem('sound_enabled') !== 'false') playSound('START');
+          }, 500);
           setIsResting(false);
           const isLastSet = currentSetIndex === currentExercise.sets - 1;
           if (isLastSet) {
@@ -550,11 +795,11 @@ function WorkoutSession({
     const isLastExercise = currentExerciseIndex === exercises.length - 1;
 
     if (isLastSet && isLastExercise) {
-      playSound('SUCCESS');
+      if (localStorage.getItem('sound_enabled') !== 'false') playSound('SUCCESS');
       finishWorkout(true);
     } else {
       // Start rest
-      playSound('NOTIFICATION');
+      if (localStorage.getItem('sound_enabled') !== 'false') playSound('NOTIFICATION');
       setIsResting(true);
       setRestTimeLeft(exerciseDef.rest_s);
       setExerciseTime(0);
@@ -563,7 +808,7 @@ function WorkoutSession({
 
   const skipRest = () => {
     if (restTimerRef.current) clearInterval(restTimerRef.current);
-    playSound('START');
+    if (localStorage.getItem('sound_enabled') !== 'false') playSound('START');
     setIsResting(false);
     const isLastSet = currentSetIndex === currentExercise.sets - 1;
     if (isLastSet) {
