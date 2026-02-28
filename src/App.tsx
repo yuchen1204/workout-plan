@@ -101,6 +101,16 @@ const Button = ({
   );
 };
 
+const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
+  <div className={cn("relative flex-shrink-0", className)}>
+    <svg viewBox="0 0 100 100" fill="none" className="w-full h-full">
+      <rect width="100" height="100" rx="24" fill="#09090b" />
+      <path d="M25 55 H38 L45 30 L55 75 L63 45 L70 55 H80" stroke="#10b981" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="80" cy="55" r="3" fill="white" />
+    </svg>
+  </div>
+);
+
 // --- Main App ---
 
 export default function App() {
@@ -122,11 +132,23 @@ export default function App() {
     day: string;
     exercises: PrescriptionItem[];
   } | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   const hasGifs = program && Object.values(program.exercise_library).some((def: any) => def.gif_url);
 
   useEffect(() => {
     loadData();
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
 
   useEffect(() => {
@@ -199,6 +221,15 @@ export default function App() {
     a.download = `fittrack-backup-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
   };
 
   const startWorkout = (week: number, day: string, exercises: PrescriptionItem[]) => {
@@ -276,13 +307,16 @@ export default function App() {
               className="space-y-8"
             >
                 <div className="flex items-end justify-between">
-                  <div>
-                    <h1 className="text-3xl font-bold tracking-tight dark:text-white">
-                      {program ? program.program_name : "Welcome back"}
-                    </h1>
-                    <p className="text-zinc-500 dark:text-zinc-400 mt-1">
-                      {program ? `Week ${Math.min(program.duration_weeks, Math.ceil(logs.length / 3) || 1)} of ${program.duration_weeks}` : "Start your fitness journey today"}
-                    </p>
+                  <div className="flex items-center gap-4">
+                    <Logo className="w-12 h-12" />
+                    <div>
+                      <h1 className="text-3xl font-bold tracking-tight dark:text-white">
+                        {program ? program.program_name : "Welcome back"}
+                      </h1>
+                      <p className="text-zinc-500 dark:text-zinc-400 mt-1">
+                        {program ? `Week ${Math.min(program.duration_weeks, Math.ceil(logs.length / 3) || 1)} of ${program.duration_weeks}` : "Start your fitness journey today"}
+                      </p>
+                    </div>
                   </div>
                   {!program && (
                     <Button onClick={() => setIsImporting(true)}>
@@ -302,10 +336,8 @@ export default function App() {
                 </div>
 
               {!program ? (
-                <Card className="p-12 flex flex-col items-center text-center space-y-4 border-dashed border-2 bg-zinc-50/50">
-                  <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-400">
-                    <Plus size={32} />
-                  </div>
+                <Card className="p-12 flex flex-col items-center text-center space-y-6 border-dashed border-2 bg-zinc-50/50 dark:bg-zinc-900/20">
+                  <Logo className="w-20 h-20 shadow-2xl rounded-3xl" />
                   <div>
                     <h3 className="text-xl font-semibold">No Active Program</h3>
                     <p className="text-zinc-500 max-w-xs mx-auto mt-2">
@@ -594,6 +626,22 @@ export default function App() {
               <div className="space-y-4">
                 <h3 className="font-bold text-zinc-500 text-xs uppercase tracking-widest">Preferences</h3>
                 <Card className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {deferredPrompt && (
+                    <div className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                          <Download size={20} />
+                        </div>
+                        <div>
+                          <p className="font-bold dark:text-white">Install App</p>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">Add to your home screen</p>
+                        </div>
+                      </div>
+                      <Button onClick={handleInstall} className="py-1.5 px-3 text-sm">
+                        Install
+                      </Button>
+                    </div>
+                  )}
                   <div className="p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-zinc-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center text-zinc-600 dark:text-zinc-300">
