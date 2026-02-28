@@ -52,9 +52,11 @@ export function formatSeconds(seconds: number): string {
 }
 
 const SOUNDS = {
-  SUCCESS: 'https://cdn.pixabay.com/audio/2022/03/15/audio_7833327c4b.mp3',
-  BEEP: 'https://cdn.pixabay.com/audio/2021/08/04/audio_0625c1539c.mp3',
-  NOTIFICATION: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c35025993a.mp3'
+  SUCCESS: 'https://cdn.pixabay.com/audio/2022/03/15/audio_7833327c4b.mp3', // Workout complete
+  BEEP: 'https://cdn.pixabay.com/audio/2021/08/04/audio_0625c1539c.mp3',    // Rest end
+  NOTIFICATION: 'https://cdn.pixabay.com/audio/2022/03/10/audio_c35025993a.mp3', // Set complete
+  START: 'https://cdn.pixabay.com/audio/2024/02/08/audio_82330a6397.mp3',   // Set start
+  TICK: 'https://cdn.pixabay.com/audio/2022/03/24/audio_7392667995.mp3'     // Countdown tick
 };
 
 export function playSound(type: keyof typeof SOUNDS) {

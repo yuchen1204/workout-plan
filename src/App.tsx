@@ -33,8 +33,11 @@ function cn(...inputs: ClassValue[]) {
 
 // --- Components ---
 
-const Card = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <div className={cn("bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden", className)}>
+const Card = ({ children, className, onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) => (
+  <div 
+    onClick={onClick}
+    className={cn("bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden", className)}
+  >
     {children}
   </div>
 );
@@ -81,6 +84,7 @@ export default function App() {
   const [program, setProgram] = useState<TrainingProgram | null>(null);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [activeWorkout, setActiveWorkout] = useState<{
     week: number;
     day: string;
@@ -122,10 +126,14 @@ export default function App() {
   };
 
   const handleReset = async () => {
-    if (confirm("Are you sure you want to clear all data? This cannot be undone.")) {
+    try {
       await clearAllData();
       setProgram(null);
       setLogs([]);
+      setIsConfirmingDelete(false);
+    } catch (error) {
+      console.error("Failed to clear data:", error);
+      alert("Failed to clear data. Please try again.");
     }
   };
 
@@ -187,9 +195,23 @@ export default function App() {
                   </Button>
                 )}
                 {program && (
-                  <Button variant="danger" onClick={handleReset} className="p-2">
-                    <Trash2 size={18} />
-                  </Button>
+                  <div className="relative">
+                    <Button 
+                      variant={isConfirmingDelete ? "primary" : "danger"} 
+                      onClick={() => isConfirmingDelete ? handleReset() : setIsConfirmingDelete(true)} 
+                      className="p-2"
+                    >
+                      {isConfirmingDelete ? <CheckCircle2 size={18} /> : <Trash2 size={18} />}
+                    </Button>
+                    {isConfirmingDelete && (
+                      <button 
+                        onClick={() => setIsConfirmingDelete(false)}
+                        className="absolute -top-2 -right-2 bg-white rounded-full shadow-md p-1 border border-zinc-200 text-zinc-400 hover:text-zinc-600"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -268,7 +290,7 @@ export default function App() {
                         const currentWeek = Math.min(program.duration_weeks, Math.ceil((logs.length + 1) / 3) || 1);
                         const prescription = calculatePrescriptionForWeek(program, currentWeek);
                         return Object.entries(prescription).map(([day, exercises]) => (
-                          <Card key={day} className="p-5 hover:border-zinc-300 transition-colors cursor-pointer group" onClick={() => startWorkout(currentWeek, day, exercises)}>
+                          <div key={day} className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden p-5 hover:border-zinc-300 transition-colors cursor-pointer group" onClick={() => startWorkout(currentWeek, day, exercises)}>
                             <div className="flex items-center justify-between mb-4">
                               <h4 className="font-bold capitalize text-lg">{day}</h4>
                               <div className="w-8 h-8 rounded-full bg-zinc-50 flex items-center justify-center group-hover:bg-zinc-900 group-hover:text-white transition-colors">
@@ -285,7 +307,7 @@ export default function App() {
                                 </div>
                               ))}
                             </div>
-                          </Card>
+                          </div>
                         ));
                       })()}
                     </div>
@@ -309,7 +331,7 @@ export default function App() {
               ) : (
                 <div className="space-y-4">
                   {[...logs].reverse().map((log, i) => (
-                    <Card key={i} className="p-5">
+                    <div key={i} className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden p-5">
                       <div className="flex items-center justify-between mb-4">
                         <div>
                           <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
@@ -329,7 +351,7 @@ export default function App() {
                           </div>
                         ))}
                       </div>
-                    </Card>
+                    </div>
                   ))}
                 </div>
               )}
@@ -441,6 +463,7 @@ function WorkoutSession({
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [isResting, setIsResting] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
   const [sessionTime, setSessionTime] = useState(0);
   const [exerciseTime, setExerciseTime] = useState(0);
@@ -464,6 +487,12 @@ function WorkoutSession({
   const exerciseDef = program.exercise_library[currentExercise.name];
 
   useEffect(() => {
+    playSound('START');
+  }, []);
+
+  useEffect(() => {
+    if (isPaused) return;
+
     timerRef.current = setInterval(() => {
       setSessionTime(prev => prev + 1);
       if (!isResting) {
@@ -473,9 +502,39 @@ function WorkoutSession({
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isResting, isPaused]);
+
+  useEffect(() => {
+    if (isPaused || !isResting) return;
+
+    restTimerRef.current = setInterval(() => {
+      setRestTimeLeft(prev => {
+        if (prev <= 4 && prev > 1) {
+          playSound('TICK');
+        }
+        if (prev <= 1) {
+          if (restTimerRef.current) clearInterval(restTimerRef.current);
+          playSound('BEEP');
+          setTimeout(() => playSound('START'), 500);
+          setIsResting(false);
+          const isLastSet = currentSetIndex === currentExercise.sets - 1;
+          if (isLastSet) {
+            setCurrentExerciseIndex(prev => prev + 1);
+            setCurrentSetIndex(0);
+          } else {
+            setCurrentSetIndex(prev => prev + 1);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
       if (restTimerRef.current) clearInterval(restTimerRef.current);
     };
-  }, [isResting]);
+  }, [isResting, isPaused, currentExerciseIndex, currentSetIndex]);
 
   const handleSetComplete = () => {
     const newLog = { ...workoutLog };
@@ -499,29 +558,12 @@ function WorkoutSession({
       setIsResting(true);
       setRestTimeLeft(exerciseDef.rest_s);
       setExerciseTime(0);
-      
-      restTimerRef.current = setInterval(() => {
-        setRestTimeLeft(prev => {
-          if (prev <= 1) {
-            if (restTimerRef.current) clearInterval(restTimerRef.current);
-            playSound('BEEP');
-            setIsResting(false);
-            if (isLastSet) {
-              setCurrentExerciseIndex(prev => prev + 1);
-              setCurrentSetIndex(0);
-            } else {
-              setCurrentSetIndex(prev => prev + 1);
-            }
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
     }
   };
 
   const skipRest = () => {
     if (restTimerRef.current) clearInterval(restTimerRef.current);
+    playSound('START');
     setIsResting(false);
     const isLastSet = currentSetIndex === currentExercise.sets - 1;
     if (isLastSet) {
@@ -554,13 +596,20 @@ function WorkoutSession({
       {/* Header */}
       <div className="p-6 flex items-center justify-between border-b border-white/10">
         <div className="flex items-center gap-3">
-          <button onClick={() => {
-            if (confirm("Quit workout? Progress will not be saved.")) onClose();
-          }} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-            <X size={20} />
+          <button 
+            onClick={() => setIsPaused(true)} 
+            className="p-2 hover:bg-white/10 rounded-full transition-colors text-zinc-400"
+            title="Pause Workout"
+          >
+            <div className="flex gap-1">
+              <div className="w-1.5 h-5 bg-current rounded-full" />
+              <div className="w-1.5 h-5 bg-current rounded-full" />
+            </div>
           </button>
           <div>
-            <h2 className="font-bold text-sm uppercase tracking-widest text-zinc-500">{day} • Week {week}</h2>
+            <h2 className="font-bold text-sm uppercase tracking-widest text-zinc-500">
+              {day} • Week {week}
+            </h2>
             <div className="flex items-center gap-2">
               <span className={cn("text-lg font-bold font-mono", isSessionOverTime ? "text-red-400" : "text-white")}>
                 {formatSeconds(sessionTime)}
@@ -666,6 +715,7 @@ function WorkoutSession({
 
               <Button 
                 onClick={handleSetComplete} 
+                disabled={isPaused}
                 className="w-full py-6 rounded-3xl text-xl bg-white text-black hover:bg-zinc-200"
               >
                 <CheckCircle2 size={24} />
@@ -675,6 +725,41 @@ function WorkoutSession({
           )}
         </AnimatePresence>
       </div>
+
+      {/* Pause Overlay */}
+      <AnimatePresence>
+        {isPaused && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[210] bg-zinc-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center"
+          >
+            <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-6">
+              <Clock size={40} className="text-zinc-400" />
+            </div>
+            <h2 className="text-4xl font-black mb-2">Workout Paused</h2>
+            <p className="text-zinc-400 mb-12 max-w-xs">Your progress is held. What would you like to do?</p>
+            
+            <div className="flex flex-col w-full max-w-xs gap-3">
+              <Button onClick={() => setIsPaused(false)} className="py-6 rounded-2xl text-xl bg-white text-black">
+                <Play size={20} fill="currentColor" />
+                Resume Workout
+              </Button>
+              
+              <Button variant="secondary" onClick={() => finishWorkout(false)} className="py-4 rounded-2xl">
+                <CheckCircle2 size={18} />
+                Finish & Save Progress
+              </Button>
+
+              <Button variant="ghost" onClick={onClose} className="py-4 rounded-2xl text-red-400 hover:bg-red-500/10 hover:text-red-400">
+                <X size={18} />
+                Discard & Quit
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Footer Alerts */}
       <div className="p-6">

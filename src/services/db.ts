@@ -1,5 +1,5 @@
 import { openDB, IDBPDatabase } from 'idb';
-import { TrainingProgram, WorkoutLog } from './types';
+import { TrainingProgram, WorkoutLog } from '../types';
 
 const DB_NAME = 'fittrack_db';
 const DB_VERSION = 1;
