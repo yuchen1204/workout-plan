@@ -1,0 +1,5 @@
+{
+  "name": "FitTrack Pro",
+  "description": "A professional fitness tracking app with custom JSON plan support and IndexedDB storage.",
+  "requestFramePermissions": []
+}
